@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Malawi Fibre Network – Dijkstra &amp; MST</title>
+<style>
+:root{--bg:#f7f8fa;--fg:#1b1f24;--mut:#5c6670;--card:#fff;--line:#d5dae0;--acc:#0b6e4f;--n:#2e7d32;--c:#1565c0;--s:#c62828;--hl:#e65100;--mst:#d81b60;--ok:#1b7a3a;--bad:#c62828;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13171b;--fg:#e8ebee;--mut:#9aa5b0;--card:#1c2228;--line:#333c45;--acc:#4cc9a0;--n:#6fcf75;--c:#6ab0ff;--s:#ff7b72;--hl:#ffa94d;--mst:#ff6fa5;--ok:#5fd68a;--bad:#ff7b72;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13171b;--fg:#e8ebee;--mut:#9aa5b0;--card:#1c2228;--line:#333c45;--acc:#4cc9a0;--n:#6fcf75;--c:#6ab0ff;--s:#ff7b72;--hl:#ffa94d;--mst:#ff6fa5;--ok:#5fd68a;--bad:#ff7b72;color-scheme:dark}
+html,body{margin:0}body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+header{padding:16px 20px 4px}h1{margin:0;font-size:21px}header p{margin:4px 0 0;color:var(--mut);font-size:13.5px}
+nav{display:flex;gap:6px;padding:10px 20px;flex-wrap:wrap}nav button,.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:7px 14px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.on,.btn.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{display:grid;grid-template-columns:minmax(300px,520px) 1fr;gap:16px;padding:0 20px 24px;align-items:start}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+#map{width:100%;height:auto;display:block}.panel{display:none}.panel.on{display:block}
+label{font-size:13px;color:var(--mut);margin-right:6px}select,input[type=range]{font:inherit;padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.res{padding:10px 12px;border-left:4px solid var(--acc);background:var(--bg);border-radius:6px;margin:10px 0}
+.tw{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{position:sticky;top:0;background:var(--card)}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}.mut{color:var(--mut)}small{color:var(--mut)}
+</style></head><body>
+<header><h1>Malawi Fibre-Optic Backbone: Dijkstra &amp; Minimum Spanning Tree</h1>
+<p>24 district towns, 31 cable links (km). Runs entirely in your browser, with nothing to install. Pick a tab to test.</p></header>
+<nav id="tabs"><button data-t="sp" class="on">Shortest path (Dijkstra)</button><button data-t="mst">Minimum spanning tree</button><button data-t="tests">Test suite</button><button data-t="about">About</button></nav>
+<main><div class="card"><svg id="map" viewBox="0 0 600 900" role="img" aria-label="Network map of Malawi district towns"></svg>
+<small><span style="color:var(--n)">●</span> North &nbsp;<span style="color:var(--c)">●</span> Central &nbsp;<span style="color:var(--s)">●</span> South &nbsp;·&nbsp; labels on links = km</small></div>
+<div>
+<section id="sp" class="panel on card"><div class="row"><label>From</label><select id="src"></select><label>To</label><select id="dst"></select><button class="btn p" id="run">Run Dijkstra</button></div>
+<div id="spres" class="res">Choose two towns and press <b>Run Dijkstra</b>.</div>
+<div class="row" id="stepbar" style="display:none"><label>Step through the algorithm</label><input type="range" id="step" min="0" value="0"><span id="stepl" class="mut"></span></div>
+<div class="tw"><table><thead><tr><th>#</th><th>Settled node</th><th>Dist (km)</th><th>Relaxations (old → new)</th></tr></thead><tbody id="trace"></tbody></table></div></section>
+<section id="mst" class="panel card"><div class="row"><label>Algorithm</label><select id="alg"><option value="k">Kruskal</option><option value="p">Prim</option></select><label>Prim start</label><select id="pst"></select><button class="btn p" id="runm">Build MST</button></div>
+<div id="mres" class="res">Press <b>Build MST</b>.</div><div class="tw"><table><thead><tr><th>#</th><th>Link</th><th>km</th><th>Decision</th></tr></thead><tbody id="mtr"></tbody></table></div></section>
+<section id="tests" class="panel card"><div class="row"><button class="btn p" id="runt">Run all tests</button></div><div id="tres" class="res">Press <b>Run all tests</b>.</div>
+<div class="tw"><table><thead><tr><th>ID</th><th>Input</th><th>Expected</th><th>Actual</th><th></th></tr></thead><tbody id="tbody"></tbody></table></div></section>
+<section id="about" class="panel card"><h3 style="margin-top:0">The scenario</h3><p>Each node is a district town and each edge a planned fibre-optic cable link. The weight is the approximate cable length in kilometres (illustrative planning figures). The graph is <b>undirected</b>, <b>weighted</b> and <b>connected</b>.</p>
+<p><b>Dijkstra</b> finds the shortest cable route between two towns (for example the lowest-latency path for data). A <b>minimum spanning tree</b> is the cheapest set of 23 links that still connects all 24 towns, i.e. the lowest-cost way to roll out the backbone.</p><p>Source code: <code>data.js</code>, <code>graph.js</code>, <code>dijkstra.js</code>, <code>mst.js</code>, <code>tests.js</code> (inlined in this page).</p></section>
+</div></main>
+<script>
+/* data.js - Malawi Fibre-Optic Backbone Network (24 district towns, 31 cable links)
+   Weights = approximate planned cable length in km (illustrative planning figures). */
+const MALAWI_NODES = [
+  // [name, region, longitude, latitude]
+  ["Chitipa","North",33.27,-9.70],["Karonga","North",33.93,-9.93],["Rumphi","North",33.86,-11.02],
+  ["Mzuzu","North",34.02,-11.46],["Nkhata Bay","North",34.30,-11.60],["Mzimba","North",33.60,-11.90],
+  ["Kasungu","Central",33.48,-13.03],["Mchinji","Central",32.90,-13.80],["Ntchisi","Central",34.00,-13.37],
+  ["Dowa","Central",33.93,-13.65],["Nkhotakota","Central",34.30,-12.93],["Salima","Central",34.43,-13.78],
+  ["Lilongwe","Central",33.78,-13.98],["Dedza","Central",34.33,-14.38],["Ntcheu","Central",34.63,-14.82],
+  ["Mangochi","South",35.25,-14.48],["Balaka","South",34.96,-14.98],["Liwonde","South",35.22,-15.07],
+  ["Zomba","South",35.32,-15.38],["Blantyre","South",35.00,-15.79],["Thyolo","South",35.14,-16.07],
+  ["Mulanje","South",35.50,-16.03],["Chikwawa","South",34.80,-16.03],["Nsanje","South",35.26,-16.92]
+];
+const MALAWI_EDGES = [
+  ["Chitipa","Karonga",100],["Karonga","Rumphi",150],["Rumphi","Mzuzu",70],["Mzuzu","Nkhata Bay",50],
+  ["Mzuzu","Mzimba",60],["Mzimba","Kasungu",190],["Nkhata Bay","Nkhotakota",250],["Kasungu","Mchinji",120],
+  ["Kasungu","Lilongwe",125],["Kasungu","Ntchisi",70],["Ntchisi","Nkhotakota",80],["Ntchisi","Dowa",50],
+  ["Dowa","Lilongwe",55],["Mchinji","Lilongwe",110],["Nkhotakota","Salima",100],["Salima","Lilongwe",110],
+  ["Salima","Mangochi",140],["Lilongwe","Dedza",85],["Dedza","Ntcheu",65],["Ntcheu","Balaka",100],
+  ["Balaka","Mangochi",70],["Mangochi","Liwonde",80],["Balaka","Liwonde",40],["Liwonde","Zomba",50],
+  ["Zomba","Blantyre",65],["Balaka","Blantyre",125],["Blantyre","Thyolo",40],["Blantyre","Mulanje",70],
+  ["Thyolo","Mulanje",50],["Blantyre","Chikwawa",50],["Chikwawa","Nsanje",90]
+];
+if (typeof module !== "undefined") module.exports = { MALAWI_NODES, MALAWI_EDGES };
+
+/* graph.js - weighted undirected graph stored as an adjacency list (Map of Map) */
+class Graph {
+  constructor() { this.adj = new Map(); }
+  addNode(n) { if (!this.adj.has(n)) this.adj.set(n, new Map()); }
+  addEdge(a, b, w) {
+    if (typeof w !== "number" || !isFinite(w)) throw new Error(`Invalid weight on ${a}-${b}`);
+    if (w < 0) throw new Error(`Negative weight (${w}) on ${a}-${b}: Dijkstra requires non-negative weights`);
+    this.addNode(a); this.addNode(b);
+    this.adj.get(a).set(b, w); this.adj.get(b).set(a, w);   // undirected
+  }
+  has(n) { return this.adj.has(n); }
+  get nodes() { return [...this.adj.keys()]; }
+  get edges() {
+    const out = [], seen = new Set();
+    for (const [a, nb] of this.adj) for (const [b, w] of nb) {
+      const k = [a, b].sort().join("|");
+      if (!seen.has(k)) { seen.add(k); out.push({ a, b, w }); }
+    }
+    return out;
+  }
+  isConnected() {
+    const ns = this.nodes; if (!ns.length) return true;
+    const seen = new Set([ns[0]]), st = [ns[0]];
+    while (st.length) for (const v of this.adj.get(st.pop()).keys()) if (!seen.has(v)) { seen.add(v); st.push(v); }
+    return seen.size === ns.length;
+  }
+}
+function buildMalawiGraph(nodes, edges) {
+  const g = new Graph();
+  nodes.forEach(n => g.addNode(n[0]));
+  edges.forEach(e => g.addEdge(e[0], e[1], e[2]));
+  return g;
+}
+if (typeof module !== "undefined") module.exports = { Graph, buildMalawiGraph };
+
+/* dijkstra.js - Dijkstra's shortest path using a binary min-heap. Complexity O((V+E) log V). */
+class MinHeap {
+  constructor() { this.h = []; }
+  get size() { return this.h.length; }
+  push(item) { const h = this.h; h.push(item); let i = h.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (h[p][0] <= h[i][0]) break; [h[p], h[i]] = [h[i], h[p]]; i = p; } }
+  pop() { const h = this.h, top = h[0], last = h.pop();
+    if (h.length) { h[0] = last; let i = 0;
+      for (;;) { let l = 2 * i + 1, r = l + 1, m = i;
+        if (l < h.length && h[l][0] < h[m][0]) m = l;
+        if (r < h.length && h[r][0] < h[m][0]) m = r;
+        if (m === i) break; [h[m], h[i]] = [h[i], h[m]]; i = m; } }
+    return top; }
+}
+function dijkstra(graph, source) {
+  if (!graph.has(source)) throw new Error(`Source "${source}" is not in the graph`);
+  const dist = new Map(), prev = new Map(), done = new Set(), steps = [];
+  graph.nodes.forEach(n => dist.set(n, Infinity));
+  dist.set(source, 0);
+  const pq = new MinHeap(); pq.push([0, source]);
+  while (pq.size) {
+    const [d, u] = pq.pop();
+    if (done.has(u)) continue;            // stale queue entry
+    done.add(u);
+    const relax = [];
+    for (const [v, w] of graph.adj.get(u)) {
+      if (done.has(v)) continue;
+      const nd = d + w;
+      if (nd < dist.get(v)) { relax.push({ v, old: dist.get(v), nd }); dist.set(v, nd); prev.set(v, u); pq.push([nd, v]); }
+    }
+    steps.push({ u, d, relax });
+  }
+  return { dist, prev, steps };
+}
+function shortestPath(graph, source, target) {
+  if (!graph.has(target)) throw new Error(`Destination "${target}" is not in the graph`);
+  const { dist, prev, steps } = dijkstra(graph, source);
+  if (dist.get(target) === Infinity) return { path: null, distance: Infinity, steps };
+  const path = [target];
+  while (path[0] !== source) path.unshift(prev.get(path[0]));
+  return { path, distance: dist.get(target), steps };
+}
+if (typeof module !== "undefined") module.exports = { dijkstra, shortestPath, MinHeap };
+
+/* mst.js - Kruskal (union-find) and Prim (min-heap) minimum spanning tree algorithms */
+const _MH = typeof MinHeap !== "undefined" ? MinHeap : require("./dijkstra").MinHeap;
+function kruskal(graph) {
+  const parent = new Map(graph.nodes.map(n => [n, n]));
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const sorted = graph.edges.sort((p, q) => p.w - q.w || (p.a + p.b).localeCompare(q.a + q.b));
+  const tree = [], log = []; let total = 0;
+  for (const e of sorted) {
+    const ra = find(e.a), rb = find(e.b);
+    if (ra !== rb) { parent.set(ra, rb); tree.push(e); total += e.w; log.push({ e, accepted: true }); }
+    else log.push({ e, accepted: false });
+  }
+  return { edges: tree, total, log, spanning: tree.length === graph.nodes.length - 1 };
+}
+function prim(graph, start) {
+  start = start || graph.nodes[0];
+  const inTree = new Set([start]), tree = [], log = []; let total = 0;
+  const pq = new _MH();
+  const push = u => { for (const [v, w] of graph.adj.get(u)) if (!inTree.has(v)) pq.push([w, u, v]); };
+  push(start);
+  while (pq.size && inTree.size < graph.nodes.length) {
+    const [w, u, v] = pq.pop();
+    if (inTree.has(v)) continue;
+    inTree.add(v); tree.push({ a: u, b: v, w }); total += w; log.push({ e: { a: u, b: v, w } }); push(v);
+  }
+  return { edges: tree, total, log, spanning: tree.length === graph.nodes.length - 1 };
+}
+if (typeof module !== "undefined") module.exports = { kruskal, prim };
+
+/* tests.js - test suite. Works in Node (node test/run.js) and in the browser page. */
+const _D = typeof module !== "undefined";
+const _G = _D ? require("./graph") : { Graph, buildMalawiGraph };
+const _DJ = _D ? require("./dijkstra") : { dijkstra, shortestPath };
+const _M = _D ? require("./mst") : { kruskal, prim };
+const _DATA = _D ? require("./data") : { MALAWI_NODES, MALAWI_EDGES };
+
+function runTests() {
+  const { Graph, buildMalawiGraph } = _G, { dijkstra, shortestPath } = _DJ, { kruskal, prim } = _M;
+  const g = buildMalawiGraph(_DATA.MALAWI_NODES, _DATA.MALAWI_EDGES);
+  const out = [];
+  const t = (id, input, expected, fn) => {
+    let actual, pass;
+    try { actual = fn(); pass = actual === expected; } catch (e) { actual = "Error: " + e.message; pass = actual === expected; }
+    out.push({ id, input, expected: String(expected), actual: String(actual), pass });
+  };
+  const sp = (a, b) => { const r = shortestPath(g, a, b); return r.path ? `${r.path.join(" > ")} = ${r.distance} km` : "No path"; };
+
+  t("T1", "Number of nodes", 24, () => g.nodes.length);
+  t("T2", "Number of edges", 31, () => g.edges.length);
+  t("T3", "Graph is connected?", true, () => g.isConnected());
+  t("T4", "Lilongwe -> Lilongwe (source = destination)", "Lilongwe = 0 km", () => sp("Lilongwe", "Lilongwe").replace(/^Lilongwe > /, ""));
+  t("T5", "Lilongwe -> Kasungu (direct link is shortest)", "Lilongwe > Kasungu = 125 km", () => sp("Lilongwe", "Kasungu"));
+  t("T6", "Lilongwe -> Blantyre", "Lilongwe > Dedza > Ntcheu > Balaka > Blantyre = 375 km", () => sp("Lilongwe", "Blantyre"));
+  t("T7", "Karonga -> Nsanje (longest route in the country)", "Karonga > Rumphi > Mzuzu > Nkhata Bay > Nkhotakota > Salima > Mangochi > Balaka > Blantyre > Chikwawa > Nsanje = 1095 km", () => sp("Karonga", "Nsanje"));
+  t("T8", "Chitipa -> Nkhata Bay", "Chitipa > Karonga > Rumphi > Mzuzu > Nkhata Bay = 370 km", () => sp("Chitipa", "Nkhata Bay"));
+  t("T9", "Symmetry: dist(Zomba,Mzuzu) == dist(Mzuzu,Zomba)", true, () => shortestPath(g, "Zomba", "Mzuzu").distance === shortestPath(g, "Mzuzu", "Zomba").distance);
+  t("T10", "Source not in graph: Dijkstra from 'Atlantis'", 'Error: Source "Atlantis" is not in the graph', () => dijkstra(g, "Atlantis"));
+  t("T11", "Destination not in graph: Lilongwe -> 'Narnia'", 'Error: Destination "Narnia" is not in the graph', () => shortestPath(g, "Lilongwe", "Narnia"));
+  t("T12", "Negative weight edge A-B = -5", "Error: Negative weight (-5) on A-B: Dijkstra requires non-negative weights", () => new Graph().addEdge("A", "B", -5));
+  t("T13", "Non-numeric weight 'abc'", "Error: Invalid weight on A-B", () => new Graph().addEdge("A", "B", "abc"));
+  t("T14", "Disconnected graph: add isolated town 'Island' ; Lilongwe -> Island", "No path", () => { const h = buildMalawiGraph(_DATA.MALAWI_NODES, _DATA.MALAWI_EDGES); h.addNode("Island"); const r = shortestPath(h, "Lilongwe", "Island"); return r.path ? "path" : "No path"; });
+  t("T15", "Single-node graph: Solo -> Solo", "Solo = 0 km", () => { const h = new Graph(); h.addNode("Solo"); const r = shortestPath(h, "Solo", "Solo"); return `${r.path.join(" > ")} = ${r.distance} km`; });
+  t("T16", "Tie / zero-weight edge: A-B 0, B-C 5, A-C 5 ; A -> C distance", 5, () => { const h = new Graph(); h.addEdge("A", "B", 0); h.addEdge("B", "C", 5); h.addEdge("A", "C", 5); return shortestPath(h, "A", "C").distance; });
+  t("T17", "Cross-check: Dijkstra == Floyd-Warshall for all 576 ordered pairs", true, () => {
+    const ns = g.nodes, d = {}; ns.forEach(a => { d[a] = {}; ns.forEach(b => d[a][b] = a === b ? 0 : Infinity); });
+    g.edges.forEach(e => { d[e.a][e.b] = e.w; d[e.b][e.a] = e.w; });
+    ns.forEach(k => ns.forEach(i => ns.forEach(j => { if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j]; })));
+    return ns.every(a => { const r = dijkstra(g, a).dist; return ns.every(b => r.get(b) === d[a][b]); });
+  });
+  t("T18", "Kruskal MST: total weight (km)", 1790, () => kruskal(g).total);
+  t("T19", "Prim MST (start Lilongwe): total weight (km)", 1790, () => prim(g, "Lilongwe").total);
+  t("T20", "MST has exactly V-1 = 23 edges (Kruskal and Prim)", true, () => kruskal(g).edges.length === 23 && prim(g, "Lilongwe").edges.length === 23);
+  t("T21", "Prim gives same total from every possible start node", true, () => g.nodes.every(n => prim(g, n).total === 1790));
+  t("T22", "Disconnected graph: Kruskal reports no spanning tree", false, () => { const h = new Graph(); h.addEdge("A", "B", 1); h.addNode("C"); return kruskal(h).spanning; });
+  return out;
+}
+if (_D) module.exports = { runTests };
+
+
+</script>
+<script>
+const g=buildMalawiGraph(MALAWI_NODES,MALAWI_EDGES),$=id=>document.getElementById(id),key=(a,b)=>[a,b].sort().join("|");
+const pos={};MALAWI_NODES.forEach(n=>pos[n[0]]={x:(n[2]-32.6)*165+20,y:(-9.4-n[3])*113+30,r:n[1]});
+const RC={North:"var(--n)",Central:"var(--c)",South:"var(--s)"};
+const LEFT=new Set("Chitipa Rumphi Mzuzu Mzimba Kasungu Mchinji Lilongwe Dedza Ntcheu Balaka Blantyre Chikwawa".split(" "));
+const names=g.nodes.slice().sort();
+["src","dst","pst"].forEach(id=>$(id).innerHTML=names.map(n=>`<option>${n}</option>`).join(""));
+$("src").value="Lilongwe";$("dst").value="Nsanje";$("pst").value="Lilongwe";
+function draw(o){o=o||{};let s="";
+ g.edges.forEach(e=>{const a=pos[e.a],b=pos[e.b],k=key(e.a,e.b),p=o.path&&o.path.has(k),m=o.mst&&o.mst.has(k);
+  s+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${p?"var(--hl)":m?"var(--mst)":"var(--line)"}" stroke-width="${p||m?4:1.6}"/>`;});
+ g.edges.forEach(e=>{const a=pos[e.a],b=pos[e.b];s+=`<text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2+3}" font-size="9" text-anchor="middle" fill="var(--mut)" stroke="var(--card)" stroke-width="3" paint-order="stroke">${e.w}</text>`;});
+ g.nodes.forEach(n=>{const p=pos[n],set=o.settled&&o.settled.has(n),end=n===o.src||n===o.dst,L=LEFT.has(n);
+  s+=`<circle cx="${p.x}" cy="${p.y}" r="${end?9:6.5}" fill="${RC[p.r]}" stroke="${set||end?"var(--hl)":"var(--card)"}" stroke-width="${set||end?3:1.5}"/><text x="${p.x+(L?-11:11)}" y="${p.y+4}" font-size="12" font-weight="600" text-anchor="${L?"end":"start"}" fill="var(--fg)" stroke="var(--card)" stroke-width="3" paint-order="stroke">${n}</text>`;});
+ $("map").innerHTML=s;}
+let R=null;
+function showStep(k){const st=R.steps.slice(0,k),done=new Set(st.map(x=>x.u)),full=k===R.steps.length;
+ const pe=new Set();if(full&&R.path)for(let i=0;i<R.path.length-1;i++)pe.add(key(R.path[i],R.path[i+1]));
+ draw({settled:done,path:pe,src:$("src").value,dst:$("dst").value});
+ $("stepl").textContent=`${k} of ${R.steps.length} nodes settled`;
+ $("trace").innerHTML=st.map((x,i)=>`<tr><td>${i+1}</td><td>${x.u}</td><td>${x.d}</td><td>${x.relax.length?x.relax.map(r=>`${r.v}: ${r.old===Infinity?"∞":r.old} → ${r.nd}`).join("<br>"):"<span class=mut>none</span>"}</td></tr>`).join("");}
+$("run").onclick=()=>{try{const a=$("src").value,b=$("dst").value;R=shortestPath(g,a,b);
+ $("spres").innerHTML=R.path?`<b>${R.distance} km</b> via ${R.path.join(" → ")} <small>(${R.path.length-1} hops)</small>`:"No route exists between these towns.";
+ const sl=$("step");sl.max=R.steps.length;sl.value=R.steps.length;$("stepbar").style.display="flex";showStep(R.steps.length);}catch(e){$("spres").innerHTML=`<span class=bad>${e.message}</span>`;}};
+$("step").oninput=e=>showStep(+e.target.value);
+$("runm").onclick=()=>{const k=$("alg").value==="k",r=k?kruskal(g):prim(g,$("pst").value);
+ draw({mst:new Set(r.edges.map(e=>key(e.a,e.b)))});
+ $("mres").innerHTML=r.spanning?`<b>${k?"Kruskal":"Prim"} MST: ${r.edges.length} links, total ${r.total} km</b>`:`<span class=bad>Graph is disconnected: only a spanning forest exists.</span>`;
+ $("mtr").innerHTML=r.log.map((l,i)=>`<tr><td>${i+1}</td><td>${l.e.a} – ${l.e.b}</td><td>${l.e.w}</td><td>${l.accepted===false?'<span class=bad>rejected (cycle)</span>':'<span class=ok>added</span>'}</td></tr>`).join("");};
+$("runt").onclick=()=>{const r=runTests(),p=r.filter(x=>x.pass).length;
+ $("tres").innerHTML=`<b class="${p===r.length?"ok":"bad"}">${p} / ${r.length} tests passed</b>`;
+ $("tbody").innerHTML=r.map(x=>`<tr><td>${x.id}</td><td>${x.input}</td><td>${x.expected}</td><td>${x.actual}</td><td class="${x.pass?"ok":"bad"}">${x.pass?"PASS":"FAIL"}</td></tr>`).join("");};
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#tabs button,.panel").forEach(x=>x.classList.remove("on"));b.classList.add("on");$(b.dataset.t).classList.add("on");
+ if(b.dataset.t==="sp"&&R)showStep(+$("step").value);else if(b.dataset.t!=="mst")draw();});
+draw();
+</script></body></html>
